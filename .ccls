@@ -1,0 +1,3 @@
+clang
+%c
+-Igst/third_party/include

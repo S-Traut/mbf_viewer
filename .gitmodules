@@ -1,0 +1,3 @@
+[submodule "gst"]
+	path = gst
+	url = git@github.com:S-Traut/gst.git
