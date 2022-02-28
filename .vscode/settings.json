@@ -1,0 +1,14 @@
+{
+  "files.associations": {
+    "*.module": "php",
+    "array": "c",
+    "string": "c",
+    "string_view": "c",
+    "hash_map": "c",
+    "bitset": "c",
+    "chrono": "c",
+    "sprite.h": "c",
+    "typeindex": "c",
+    "typeinfo": "c"
+  }
+}

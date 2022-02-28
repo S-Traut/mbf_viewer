@@ -1,8 +1,14 @@
 #version 330 core
 precision mediump float;
+
+uniform sampler2D u_tex[2];
+
+in vec2 uv;
+in float v_texid;
 out vec4 frag_color;
-uniform vec4 u_color;
+
 void main()
 {
-  frag_color = u_color;
+  int id = int(v_texid);
+  frag_color = texture(u_tex[id], uv);
 };

@@ -6,104 +6,40 @@
     Press `esc` to exit the application.
 ================================================================*/
 #include <gs/gs.h>
+#include "sprite.h"
+#include "texture.h"
+#include "shaders.h"
+#include "data.h"
 
-gs_command_buffer_t cb = {0};
-gs_handle(gs_graphics_vertex_buffer_t) vbo = {0};
-gs_handle(gs_graphics_index_buffer_t) ibo = {0};
-gs_handle(gs_graphics_pipeline_t) pip = {0};
-gs_handle(gs_graphics_shader_t) shader = {0};
-gs_handle(gs_graphics_uniform_t) uniform = {0};
+int play = 0;
+int t = 0;
 
-float v_data[] = {
-    -0.5f, -0.5f, // 0
-    0.5f,  -0.5f, // 1
-    0.5f,  0.5f,  // 2
-    -0.5f, 0.5f,  // 3
-};
+void init()
+{
 
-void init() {
-  // Creating a new command buffer
-  cb = gs_command_buffer_new();
+  appdata *app = gs_user_data(appdata);
+  app->command_buffer = gs_command_buffer_new();
 
-  char *vs = gs_platform_read_file_contents("res/shaders/base.vs", "rb", 0);
-  char *fs = gs_platform_read_file_contents("res/shaders/base.fs", "rb", 0);
+  app->d_vbo = NULL;
+  app->d_ibo = NULL;
+  app->textures = NULL;
+  app->textures_h = NULL;
 
-  // VERTEX BUFFER
-  // Le vertex buffer est un buffer de memoire que l'ont va
-  // envoyer a la carte graphique pour quelle traitre rapidement ses
-  // valeurs.
-  //
-  // Sa description va être simplement un tableau de float qui designe la
-  // position de chaque vertices de notre forme.
-  gs_graphics_vertex_buffer_desc_t vbdesc = {
-      .data = v_data,
-      .size = sizeof(v_data),
-  };
-  vbo = gs_graphics_vertex_buffer_create(&vbdesc);
+  // Generating textures
+  // (TODO): Abstraction from mbf
+  gs_dyn_array_push(app->textures, mbfv_create_texture("res/img/img.jpg"));
+  gs_dyn_array_push(app->textures, mbfv_create_texture("res/img/flush3d.png"));
+  //////////
 
-  // INDEX BUFFER
-  // L'index buffer est tout comme le vertex buffer un bout de memoire qui va
-  // contenir une suite d'index que la carte graphique pourra interpreter pour
-  // generer une suite de vertex, ce qui va permettre de reduire drastiquement
-  // la taille de la memoire allouée pour chaque connexion de triangles.
-  unsigned int indexes[] = {0, 1, 2, 2, 3, 0};
-  gs_graphics_buffer_update_desc_t gbu = {
-      .offset = 0,
-      .type = GS_GRAPHICS_BUFFER_UPDATE_RECREATE,
-  };
+  for (int i = 0; i < gs_dyn_array_size(app->textures); i++)
+  {
+    gs_graphics_texture_desc_t description = app->textures[i];
+    gs_handle_gs_graphics_texture_t texture = gs_graphics_texture_create(&description);
+    gs_dyn_array_push(app->textures_h, texture);
+  }
 
-  gs_graphics_index_buffer_desc_t ibdesc = {
-      .data = &indexes,
-      .size = sizeof(indexes),
-      .usage = GS_GRAPHICS_BUFFER_USAGE_STATIC,
-      .update = gbu,
-  };
-  ibo = gs_graphics_index_buffer_create(&ibdesc);
-
-  // SHADER
-  // Les shaders son une manière d'attribuer des calcul graphiques sur un
-  // element en modifiant ses informations (to be improved)
-  // Les shaders sont simplement du code qui va être executé par le processeur
-  // graphique.
-  //
-  // Vertex shader:
-  // Les vertex shaders sont executés pour chaque vertex de notre buffer. ils
-  // permettent principalement de positioner chaque vertices sur l'ecran.
-  //
-  // Fragment shader:
-  // Les fragment shaders vont bouclés sur chaque pixels de notre window pour
-  // definir la couleur de chaque pixel affiché, à la suite du vertex shader
-  // dans notre exemple, le fragment va simplement tracer chaque pixel de notre
-  // triangle pour le rendre visible.
-  gs_graphics_shader_source_desc_t shadersrc[] = {
-      {.type = GS_GRAPHICS_SHADER_STAGE_VERTEX, .source = vs},
-      {.type = GS_GRAPHICS_SHADER_STAGE_FRAGMENT, .source = fs},
-  };
-
-  gs_graphics_shader_desc_t shaderdesc = {
-      .sources = shadersrc,
-      .size = 2 * sizeof(gs_graphics_shader_source_desc_t),
-      .name = "triangle",
-  };
-  shader = gs_graphics_shader_create(&shaderdesc);
-
-  // UNIFORMS
-  // Les uniforms sont un element assez similaire aux attribus, ils permettent
-  // d'envoyer des informations depuis le CPU vers le GPU, par exemple si l'ont
-  // souhaite modifier la couleur de notre triangle sur le temps, on modifiera
-  // sa valeur dans l'update, puis on enverra celle-ci dans l'uniform pour que
-  // le shader puisse la traiter.
-  gs_graphics_uniform_layout_desc_t uldesc = {
-      .type = GS_GRAPHICS_UNIFORM_VEC4,
-      .fname = "u_color",
-      .count = 0,
-  };
-  gs_graphics_uniform_desc_t udesc = {
-      .layout = &uldesc,
-      .layout_size = sizeof(gs_graphics_uniform_layout_desc_t),
-      .stage = GS_GRAPHICS_SHADER_STAGE_FRAGMENT,
-  };
-  uniform = gs_graphics_uniform_create(&udesc);
+  app->texture_uniform = mbfv_create_texture_uniform();
+  app->shader = mbfv_load_shaders();
 
   // PIPELINE
   gs_graphics_vertex_attribute_desc_t attributes[] = {
@@ -111,64 +47,140 @@ void init() {
           .format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT2,
           .name = "a_pos",
       },
+      {
+          .format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT2,
+          .name = "a_uv",
+      },
+      {
+          .format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT,
+          .name = "a_texid",
+      },
   };
 
   gs_graphics_pipeline_desc_t pipedesc = {
-      .raster = {.shader = shader},
+      .raster = {.shader = app->shader},
       .layout =
           {
               .attrs = attributes,
-              .size = sizeof(gs_graphics_vertex_attribute_desc_t),
+              .size = sizeof(attributes),
           },
+
   };
-  pip = gs_graphics_pipeline_create(&pipedesc);
+  app->pipeline = gs_graphics_pipeline_create(&pipedesc);
 }
 
-void update() {
-  if (gs_platform_key_pressed(GS_KEYCODE_ESC)) {
+void update()
+{
+  appdata *app = gs_user_data(appdata);
+  gs_command_buffer_t *cb = &app->command_buffer;
+
+  if (gs_platform_key_pressed(GS_KEYCODE_ESC))
     gs_quit();
+
+  if (gs_platform_key_pressed(GS_KEYCODE_SPACE))
+    play = !play;
+
+  if (!play)
+    return;
+
+  //////// BATCH
+  // To be optimized for generating > unit texture size for a single frame in the case this
+  // happens on lower GCards.
+
+  gs_dyn_array_clear(app->d_vbo);
+  gs_dyn_array_clear(app->d_ibo);
+
+  mbfv_sprite_desc_t sprite1 = {
+      .texture_id = 0,
+      .position = {.x = -300, .y = 0},
+      .opacity = 1.0f,
+  };
+
+  mbfv_sprite_desc_t sprite2 = {
+      .texture_id = 1,
+      .position = {.x = 300, .y = 0},
+      .opacity = 1.0f,
+  };
+
+  mbfv_create_sprite(app, sprite1);
+  mbfv_create_sprite(app, sprite2);
+
+  // Need to understand why I have to go reverse to insert the binds
+  int textures_size = gs_dyn_array_size(app->textures_h);
+  int b = 0;
+  gs_graphics_bind_uniform_desc_t unibinds[textures_size];
+  for (int i = textures_size - 1; i >= 0; i--)
+  {
+    gs_graphics_bind_uniform_desc_t utexture_description = {
+        .uniform = app->texture_uniform,
+        .data = &app->textures_h[i],
+        .binding = b,
+    };
+    unibinds[b] = utexture_description;
+    b++;
   }
 
-  // Generation d'une action de clear pour fill le screen avec une couleur fixe.
-  // Elle est executés au debut de chaque frame
-  gs_graphics_clear_action_t clear_action = {.color = {0.1f, 0.1f, 0.1f, 1.f}};
-  gs_graphics_clear_desc_t clear = {.actions = &clear_action};
-
-  // Binding descriptor for vertex buffer
-  gs_graphics_bind_vertex_buffer_desc_t vbinds = {.buffer = vbo};
-  gs_graphics_bind_index_buffer_desc_t ibinds = {.buffer = ibo};
-
-  const float t = gs_platform_elapsed_time() * 0.001f;
-  const float r = cos(t) * 0.5f + 0.5f;
-  const float b = sin(t) * 0.5f + 0.5f;
-  gs_vec3 color_data = gs_v3(r, 0.5, b);
-  gs_graphics_bind_uniform_desc_t unibinds = {
-      .uniform = uniform,
-      .data = &color_data,
+  gs_graphics_vertex_buffer_desc_t vbdesc = {
+      .data = app->d_vbo,
+      .size = sizeof(float) * gs_dyn_array_size(app->d_vbo),
   };
+
+  gs_graphics_index_buffer_desc_t ibdesc = {
+      .data = app->d_ibo,
+      .size = sizeof(float) * gs_dyn_array_size(app->d_ibo),
+      .usage = GS_GRAPHICS_BUFFER_USAGE_DYNAMIC,
+      .update = {
+          .offset = 0,
+          .type = GS_GRAPHICS_BUFFER_UPDATE_RECREATE,
+      },
+  };
+
+  gs_graphics_bind_vertex_buffer_desc_t vbinds = {.buffer = gs_graphics_vertex_buffer_create(&vbdesc)};
+  gs_graphics_bind_index_buffer_desc_t ibinds = {.buffer = gs_graphics_index_buffer_create(&ibdesc)};
 
   gs_graphics_bind_desc_t binds = {
       .vertex_buffers = &vbinds,
       .index_buffers = &ibinds,
-      .uniforms = &unibinds,
+      .uniforms = {.desc = unibinds, .size = sizeof(unibinds)},
   };
+
+  gs_graphics_clear_action_t clear_action = {.color = {0.1f, 0.1f, 0.1f, 1.f}};
+  gs_graphics_clear_desc_t clear = {.actions = &clear_action};
+
+  const gs_vec2 fbs = gs_platform_framebuffer_sizev(gs_platform_main_window());
+  float viewx = fbs.x;
+  float viewy = fbs.x * 9 / 16;
+  float viewox = 0;
+  float viewoy = (fbs.y - viewy) / 2;
+  if (viewy > fbs.y)
+  {
+    viewx = fbs.y * 16 / 9;
+    viewy = fbs.y;
+    viewox = (fbs.x - viewx) / 2;
+    viewoy = 0;
+  }
 
   // Creating a draw description
-  gs_graphics_draw_desc_t drawdesc = {.start = 0, .count = 6};
+  gs_graphics_draw_desc_t drawdesc = {.start = 0, .count = 12};
+  gs_graphics_begin_render_pass(cb, GS_GRAPHICS_RENDER_PASS_DEFAULT);
+  gs_graphics_set_viewport(cb, viewox, viewoy, viewx, viewy);
+  gs_graphics_clear(cb, &clear);
+  gs_graphics_bind_pipeline(cb, app->pipeline);
+  gs_graphics_apply_bindings(cb, &binds);
+  gs_graphics_draw(cb, &drawdesc);
+  gs_graphics_end_render_pass(cb);
+  gs_graphics_submit_command_buffer(cb);
 
-  gs_graphics_begin_render_pass(&cb, GS_GRAPHICS_RENDER_PASS_DEFAULT);
-  gs_graphics_clear(&cb, &clear);
-  gs_graphics_bind_pipeline(&cb, pip);
-  gs_graphics_apply_bindings(&cb, &binds);
-  gs_graphics_draw(&cb, &drawdesc);
-  gs_graphics_end_render_pass(&cb);
-  gs_graphics_submit_command_buffer(&cb);
+  t++;
 }
 
-gs_app_desc_t gs_main(int32_t argc, char **argv) {
-  return (gs_app_desc_t){
-      .init = init,
-      .update = update,
-      .window_title = "GST",
-  };
+gs_app_desc_t gs_main(int32_t argc, char **argv)
+{
+  érique(IEC958) | ~ / s / p / C / GS01 | (master) return (gs_app_desc_t){
+                                              .user_data = gs_malloc_init(appdata),
+                                              .init = init,
+                                              .update = update,
+                                              .window_title = "GST",
+                                              .frame_rate = 100,
+                                          };
 }
