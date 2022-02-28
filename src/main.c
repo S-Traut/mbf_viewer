@@ -176,11 +176,12 @@ void update()
 
 gs_app_desc_t gs_main(int32_t argc, char **argv)
 {
-  érique(IEC958) | ~ / s / p / C / GS01 | (master) return (gs_app_desc_t){
-                                              .user_data = gs_malloc_init(appdata),
-                                              .init = init,
-                                              .update = update,
-                                              .window_title = "GST",
-                                              .frame_rate = 100,
-                                          };
+
+  return (gs_app_desc_t){
+      .user_data = gs_malloc_init(appdata),
+      .init = init,
+      .update = update,
+      .window_title = "GST",
+      .frame_rate = 100,
+  };
 }
